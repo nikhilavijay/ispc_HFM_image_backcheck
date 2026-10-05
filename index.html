@@ -130,7 +130,7 @@
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbx2wLapmNxm9AE2bWrjTQHZqt5zuKbglbkpH5EilvgOTXq8LS3AQOHVnNQG1up8tQq-2w/exec',   // ends in /exec
 
-  BACKCHECKERS: ['Chaitra', 'Supraja', 'Nayan', 'Nikhila', 'Nicholas Ryan', 'Steven', 'Naveen', 'Kiran', 'Meghana', 'Others'],  // names in the dropdown
+  BACKCHECKERS: ['Chaitra', 'Supraja', 'Nayan', 'Nikhia', 'Kiran', 'Nick Ryan', 'Steven', 'Naveen', 'Meghana'],  // names in the dropdown
 
   IMAGE_LABELS: ['Plot photo', 'Pipe photo'],   // same order as IMAGE_COLS in Code.gs (Image 2, then Image 1)
 
@@ -142,7 +142,7 @@ const CONFIG = {
       hint: '1 = unusable, 5 = clear and shows the whole plot', type: 'rating', max: 5, image: 1 },
     { col: 'bc_Image Quality of Pipe Image (Max Score: 5)', label: 'Image quality of the pipe photo',
       hint: '1 = unusable, 5 = pipe and water line clearly visible', type: 'rating', max: 5, image: 2 },
-    { col: 'bc_Is the field flooded across the plot?', label: 'Is the field flooded across the plot?',
+    { col: 'bc_Is the field Flooded across the plot?', label: 'Is the field flooded across the plot?',
       type: 'choice', options: ['Yes', 'No'], image: 1 },
     { col: 'bc_Is water level in pani-pipe visible?', label: 'Is the water level in the pani-pipe visible?',
       type: 'choice', options: ['Yes', 'No'], image: 2 },
@@ -154,6 +154,10 @@ const CONFIG = {
     type: 'choice', options: ['Yes', 'No'], image: 2 },
 
   NA_VALUE: 'NA',
+
+  // While the backchecker answers, the next plot loads in the background. A preloaded plot
+  // older than this is discarded, so its reservation (15 min in Code.gs) can't run out.
+  PRELOAD_MAX_AGE_MIN: 10,
 };
 /* ====================================================== */
 
@@ -266,7 +270,37 @@ function showStatus(title, text) {
 }
 
 /* ---------- Flow ---------- */
+// Show a response from the 'next' action, then start preloading the one after it
+function showResult(res) {
+  if (res.error) {
+    if (/access key/i.test(res.error)) return signOut(res.error);
+    return showStatus('Could not load a plot', res.error);
+  }
+  renderProgress(res.progress);
+  if (res.finished) return showStatus('All plots are reviewed', 'There are no plots left to check right now. New rows added to the sheet will appear here.');
+  S.item = res;
+  renderItem(res);
+  S.preload = { t: Date.now(), p: apiGet({ action: 'next', key: S.key, by: S.by, skip: res.rowKey }).catch(() => null) };
+}
+
+// After saving: use the preloaded plot if it's ready and recent, otherwise load normally
+async function showNext() {
+  const pl = S.preload;
+  S.preload = null;
+  if (pl && Date.now() - pl.t < CONFIG.PRELOAD_MAX_AGE_MIN * 60000) {
+    setMsg('Loading the next plot…');
+    const res = await pl.p;
+    if (res && !res.error) {
+      if (res.progress) res.progress.done++;   // counted before this save
+      setBusy(false);
+      return showResult(res);
+    }
+  }
+  return loadNext();
+}
+
 async function loadNext() {
+  S.preload = null;
   setBusy(true);
   $('review').hidden = false; $('status').hidden = true;
   $('part1').innerHTML = ''; $('part2').hidden = true; $('waiting').hidden = true;
@@ -274,15 +308,7 @@ async function loadNext() {
   $('photos').innerHTML = '<figure><div class="noimg">Loading photo…</div></figure><figure><div class="noimg">Loading photo…</div></figure>';
   setMsg('Loading the next plot…');
   try {
-    const res = await apiGet({ action: 'next', key: S.key, by: S.by });
-    if (res.error) {
-      if (/access key/i.test(res.error)) return signOut(res.error);
-      return showStatus('Could not load a plot', res.error);
-    }
-    renderProgress(res.progress);
-    if (res.finished) return showStatus('All plots are reviewed', 'There are no plots left to check right now. New rows added to the sheet will appear here.');
-    S.item = res;
-    renderItem(res);
+    showResult(await apiGet({ action: 'next', key: S.key, by: S.by }));
   } catch (e) {
     showStatus('Could not reach the sheet', 'Check your internet connection, then try again.');
   } finally {
@@ -308,7 +334,7 @@ async function submit() {
   try {
     const res = await apiPost({ key: S.key, by: S.by, row: S.item.row, rowKey: S.item.rowKey, answers });
     if (res.error && !res.skip) { setBusy(false); return setMsg(res.error + ' Your answers are still here; try again.', true); }
-    await loadNext();
+    await showNext();
     if (res.error) setMsg(res.error, true);
   } catch (e) {
     setBusy(false);
