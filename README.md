@@ -29,9 +29,8 @@ At the top of `Code.gs`, change these values to match your sheet:
 |---|---|
 | `SHEET_NAME` | The tab name holding the data, exactly as it appears (e.g. `Sheet1`) |
 | `SECRET` | An access key you'll share with backcheckers. Choose something not easy to guess. |
-| `ID_COL` | Header of the plot ID column |
-| `DATE_COL` | Header of the monitoring date column |
-| `IMAGE_COLS` | Headers of the two image columns, in the order they should appear |
+| `KEY_COL` | Header of the unique identifier column (`KEY`) |
+| `IMAGE_COLS` | Headers of the two image columns, in the order they should appear. If an observation has only one photo, leave the other cell blank. |
 
 Header names must match row 1 exactly, including capitalisation and spaces. You don't need to create the `bc_` answer columns. The script adds them at the end of the header row the first time it runs.
 
@@ -78,7 +77,7 @@ API_URL: 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE',
 
 Replace the placeholder with your `/exec` URL and keep the quote marks. Save the file.
 
-You can also edit the questions here, in the `QUESTIONS` list. Each `col` value becomes a sheet column and must start with `bc_`.
+You can also edit the questions here, in the `QUESTIONS` list. Each `col` value becomes a sheet column and must start with `bc_`. A question marked `needsTwoPhotos: true` is hidden for observations with one photo, and `NA` is written to its column instead.
 
 ### 2.2 Create the repository
 
