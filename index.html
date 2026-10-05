@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plot photo backcheck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #EDF0EA; --panel: #FFFFFF; --ink: #1F2A1E; --muted: #5B6657;
+    --line: #CDD5C8; --paddy: #3D6B35; --water: #2B6A88; --warn: #9A4A1F; --soil: #D9DFD4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Public Sans", system-ui, sans-serif; background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.45; }
+  [hidden] { display: none !important; }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap;
+           padding: .85rem 1.25rem; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 1.05rem; margin: 0; }
+  .who { color: var(--muted); font-size: .9rem; }
+  .who button { background: none; border: 0; color: var(--water); font: inherit; text-decoration: underline; cursor: pointer; padding: 0; margin-left: .5rem; }
+  .bar { height: 4px; background: var(--line); }
+  .bar div { height: 100%; background: var(--paddy); width: 0; transition: width .4s; }
+
+  main { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: 1.25rem; padding: 1.25rem; max-width: 1500px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .photos { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; align-self: start; }
+  .photos.single { grid-template-columns: minmax(0, 560px); }
+  @media (max-width: 600px) { .photos { grid-template-columns: 1fr; } }
+  figure { margin: 0; position: relative; background: var(--soil); border-radius: 6px; overflow: hidden; aspect-ratio: 3 / 4; }
+  figure button { all: unset; display: block; width: 100%; height: 100%; cursor: zoom-in; }
+  figure button:focus-visible { outline: 3px solid var(--water); outline-offset: -3px; }
+  figure img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  figcaption { position: absolute; left: .5rem; top: .5rem; background: rgba(31, 42, 30, .78); color: #fff; font-size: .8rem; padding: .1rem .5rem; border-radius: 3px; }
+  .noimg { display: grid; place-items: center; height: 100%; padding: 1rem; text-align: center; color: var(--muted); }
+
+  form.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1.25rem; align-self: start; }
+  fieldset { border: 0; padding: 0; margin: 0 0 1.3rem; }
+  legend { font-weight: 600; padding: 0; margin-bottom: .45rem; }
+  .hint { color: var(--muted); font-size: .85rem; margin: -.25rem 0 .5rem; }
+  .opts { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .opts label { position: relative; }
+  .opts input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .opts span { display: inline-block; padding: .5rem .95rem; border: 1.5px solid var(--line); border-radius: 999px; background: #fff; cursor: pointer; }
+  .opts.rating span { border-radius: 6px; min-width: 2.8rem; text-align: center; }
+  .opts input:checked + span { background: var(--water); border-color: var(--water); color: #fff; }
+  .opts input:focus-visible + span { outline: 3px solid var(--paddy); outline-offset: 2px; }
+  textarea, input[type=password], select { width: 100%; font: inherit; padding: .55rem .65rem; border: 1.5px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); }
+  textarea { min-height: 4.5rem; resize: vertical; }
+  textarea:focus, input:focus, select:focus { outline: 3px solid var(--water); outline-offset: 0; border-color: var(--water); }
+
+  /* Reading: the one emphasised element on the page */
+  .reading { border-left: 4px solid var(--water); background: #E6EFF3; padding: .85rem 1rem; margin: 0 0 1.3rem; border-radius: 0 6px 6px 0; }
+  .reading .label { font-size: .85rem; color: var(--muted); }
+  .reading strong { display: block; font-size: 2rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .reading .sub { font-size: .85rem; color: var(--muted); margin: .25rem 0 0; }
+  #part2 { border-top: 1px solid var(--line); padding-top: 1.25rem; }
+
+  button.primary { font: inherit; font-weight: 600; border-radius: 6px; padding: .75rem 1.1rem; cursor: pointer; background: var(--paddy); color: #fff; border: 0; width: 100%; }
+  button:disabled { opacity: .55; cursor: wait; }
+  button:focus-visible { outline: 3px solid var(--water); outline-offset: 2px; }
+  .msg { margin: .75rem 0 0; font-size: .9rem; min-height: 1.2em; }
+  .msg.error { color: var(--warn); }
+  .waiting { color: var(--muted); font-size: .9rem; margin: 0; }
+
+  .center { max-width: 400px; margin: 12vh auto; padding: 0 1.25rem; }
+  .center h2 { margin: 0 0 .5rem; font-size: 1.4rem; }
+  .center p { color: var(--muted); margin: 0 0 1.25rem; }
+  .center label { display: block; font-weight: 600; margin: 0 0 .3rem; }
+  .center select, .center input { margin-bottom: 1rem; }
+
+  dialog { border: 0; padding: 0; background: #000; max-width: 96vw; max-height: 96vh; }
+  dialog::backdrop { background: rgba(0, 0, 0, .85); }
+  dialog img { display: block; max-width: 96vw; max-height: 96vh; object-fit: contain; cursor: zoom-out; }
+  @media (prefers-reduced-motion: reduce) { .bar div { transition: none; } }
+</style>
+</head>
+<body>
+
+<!-- Sign in -->
+<section id="login" class="center" hidden>
+  <h2>Plot photo backcheck</h2>
+  <p>Choose your name and enter the access key your manager shared.</p>
+  <form id="loginForm">
+    <label for="name">Your name</label>
+    <select id="name" required></select>
+    <label for="key">Access key</label>
+    <input id="key" type="password" required>
+    <button class="primary" type="submit">Start reviewing</button>
+    <p class="msg error" id="loginMsg"></p>
+  </form>
+</section>
+
+<!-- Review -->
+<div id="app" hidden>
+  <header>
+    <h1>Plot photo backcheck</h1>
+    <div class="who"><span id="progress"></span> <span id="whoName"></span><button id="switch" type="button">Switch user</button></div>
+  </header>
+  <div class="bar"><div id="barFill"></div></div>
+
+  <main id="review">
+    <div class="photos" id="photos"></div>
+    <form id="qForm" class="panel" novalidate>
+      <div id="part1"></div>
+      <p class="waiting" id="waiting">Answer all the questions above to see the pani-pipe reading.</p>
+      <div id="part2" hidden>
+        <div class="reading" id="reading"></div>
+        <div id="finalQ"></div>
+        <button class="primary" type="submit" id="saveBtn">Save and show next images</button>
+      </div>
+      <p class="msg" id="msg" role="status"></p>
+    </form>
+  </main>
+
+  <section id="status" class="center" hidden>
+    <h2 id="statusTitle"></h2>
+    <p id="statusText"></p>
+    <button class="primary" type="button" id="retry">Check again</button>
+  </section>
+</div>
+
+<dialog id="zoom"><img alt=""></dialog>
+
+<script>
+/* ======================= CONFIG ======================= */
+const CONFIG = {
+  API_URL: 'https://script.google.com/macros/s/AKfycbx2wLapmNxm9AE2bWrjTQHZqt5zuKbglbkpH5EilvgOTXq8LS3AQOHVnNQG1up8tQq-2w/exec',   // ends in /exec
+
+  BACKCHECKERS: ['Chaitra', 'Supraja', 'Nayan', 'Nicholas Ryan', 'Steven', 'Naveen', 'Kiran', 'Meghana'],  // names in the dropdown
+
+  IMAGE_LABELS: ['Plot photo', 'Pipe photo'],   // same order as IMAGE_COLS in Code.gs (Image 2, then Image 1)
+
+  // "col" must match the sheet header exactly (extra spaces and capitals are ignored).
+  // image: 1 or 2 means the question is skipped, and NA_VALUE recorded, when that photo is blank.
+  // optional: true lets the backchecker leave it empty.
+  QUESTIONS: [
+    { col: 'bc_Image Quality of Plot Image (Max Score: 5)', label: 'Image quality of the plot photo',
+      hint: '1 = unusable, 5 = clear and shows the whole plot', type: 'rating', max: 5, image: 1 },
+    { col: 'bc_Image Quality of Pipe Image (Max Score: 5)', label: 'Image quality of the pipe photo',
+      hint: '1 = unusable, 5 = pipe and water line clearly visible', type: 'rating', max: 5, image: 2 },
+    { col: 'bc_Is the field flooded across the plot?', label: 'Is the field flooded across the plot?',
+      type: 'choice', options: ['Yes', 'No'], image: 1 },
+    { col: 'bc_Is water level in pani-pipe visible?', label: 'Is the water level in the pani-pipe visible?',
+      type: 'choice', options: ['Yes', 'No'], image: 2 },
+    { col: 'bc_Comments', label: 'Comments', type: 'text' },
+  ],
+
+  // Asked after the reading is shown; the label is filled in with the reading
+  FINAL_QUESTION: { col: 'bc_Is the panipipe reading approximately correct ( x cm below soil level)?',
+    type: 'choice', options: ['Yes', 'No'], image: 2 },
+
+  NA_VALUE: 'NA',
+};
+/* ====================================================== */
+
+const $ = id => document.getElementById(id);
+const store = {
+  get: k => { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+};
+const S = { by: store.get('bc_by'), key: store.get('bc_key'), item: null, busy: false };
+
+/* ---------- API ---------- */
+async function apiGet(params) {
+  const u = new URL(CONFIG.API_URL);
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+  return (await fetch(u)).json();
+}
+async function apiPost(body) {
+  // text/plain avoids a CORS preflight, which Apps Script can't answer
+  const r = await fetch(CONFIG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+  return r.json();
+}
+
+/* ---------- Questions ---------- */
+function questionHTML(q, label) {
+  const hint = q.hint ? `<p class="hint">${q.hint}</p>` : '';
+  const id = 'q' + Math.abs([...q.col].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7));
+  if (q.type === 'text') {
+    return `<fieldset data-col="${q.col}"><legend><label for="${id}">${label}</label></legend>${hint}<textarea id="${id}" name="${q.col}"></textarea></fieldset>`;
+  }
+  const opts = q.type === 'rating' ? Array.from({ length: q.max || 5 }, (_, n) => String(n + 1)) : q.options;
+  return `<fieldset data-col="${q.col}"><legend>${label}</legend>${hint}<div class="opts${q.type === 'rating' ? ' rating' : ''}">` +
+    opts.map(o => `<label><input type="radio" name="${q.col}" value="${o}"><span>${o}</span></label>`).join('') +
+    `</div></fieldset>`;
+}
+
+// A question applies unless it depends on a photo that is blank for this observation
+function applies(q) {
+  if (!q.image || !S.item) return true;
+  const img = S.item.images[q.image - 1];
+  return img && img.status !== 'missing';
+}
+
+function valueOf(q) {
+  const fd = new FormData($('qForm'));
+  return (fd.get(q.col) || '').toString().trim();
+}
+
+function part1Complete() {
+  return CONFIG.QUESTIONS.every(q => !applies(q) || q.optional || valueOf(q));
+}
+
+function readingText(rd) {
+  if (!rd) return { big: 'No reading recorded', phrase: 'no reading recorded' };
+  const v = rd.value, a = Math.abs(v);
+  const phrase = v < 0 ? `${a} cm below soil level` : v > 0 ? `${a} cm above soil level` : 'at soil level';
+  return { big: `${v} cm`, phrase };
+}
+
+/* ---------- Rendering ---------- */
+function renderItem(it) {
+  $('status').hidden = true; $('review').hidden = false;
+
+  // Photos: only the ones that exist for this observation
+  const shown = it.images.map((img, i) => ({ ...img, i })).filter(img => img.status !== 'missing');
+  $('photos').classList.toggle('single', shown.length < 2);
+  $('photos').innerHTML = !shown.length
+    ? '<figure><div class="noimg">This observation has no photos in the sheet. Answer what you can and explain in Comments.</div></figure>'
+    : shown.map(img => `<figure>
+        ${img.status === 'ok'
+          ? `<button type="button" data-i="${img.i}" aria-label="Enlarge ${CONFIG.IMAGE_LABELS[img.i]}"><img src="${img.src}" alt="${CONFIG.IMAGE_LABELS[img.i]}"></button>`
+          : `<div class="noimg">${CONFIG.IMAGE_LABELS[img.i]} couldn't be loaded. Answer what you can and explain in Comments.</div>`}
+        <figcaption>${CONFIG.IMAGE_LABELS[img.i]}</figcaption></figure>`).join('');
+
+  // Part 1 questions
+  $('part1').innerHTML = CONFIG.QUESTIONS.filter(applies).map(q => questionHTML(q, q.label)).join('');
+
+  // Reading and final question
+  const rt = readingText(it.reading);
+  const rd = it.reading;
+  $('reading').innerHTML = `<span class="label">Pani-pipe reading recorded in the survey</span><strong>${rt.big}</strong>` +
+    (rd ? `<p class="sub">Water above soil (${rd.above} cm) minus water below soil (${rd.below} cm). Negative means below soil level.</p>` : '');
+  const fq = CONFIG.FINAL_QUESTION;
+  $('reading').hidden = !applies(fq);
+  $('finalQ').innerHTML = applies(fq) ? questionHTML(fq, `Is the pani-pipe reading approximately correct (${rt.phrase})?`) : '';
+
+  $('part2').hidden = true; $('waiting').hidden = false;
+  updateParts();
+  setMsg('');
+  window.scrollTo({ top: 0 });
+}
+
+// Reveal the reading and final question once part 1 is fully answered
+function updateParts() {
+  if (!$('part2').hidden) return;
+  if (part1Complete()) { $('part2').hidden = false; $('waiting').hidden = true; }
+}
+
+function renderProgress(p) {
+  if (!p) return;
+  $('progress').textContent = `${p.done} of ${p.total} plots reviewed.`;
+  $('barFill').style.width = p.total ? (100 * p.done / p.total) + '%' : '0';
+}
+
+function setMsg(text, error = false) { $('msg').textContent = text; $('msg').className = 'msg' + (error ? ' error' : ''); }
+function setBusy(b) { S.busy = b; $('saveBtn').disabled = b; }
+
+function showStatus(title, text) {
+  $('review').hidden = true; $('status').hidden = false;
+  $('statusTitle').textContent = title; $('statusText').textContent = text;
+}
+
+/* ---------- Flow ---------- */
+async function loadNext() {
+  setBusy(true);
+  $('review').hidden = false; $('status').hidden = true;
+  $('part1').innerHTML = ''; $('part2').hidden = true; $('waiting').hidden = true;
+  $('photos').classList.remove('single');
+  $('photos').innerHTML = '<figure><div class="noimg">Loading photo…</div></figure><figure><div class="noimg">Loading photo…</div></figure>';
+  setMsg('Loading the next plot…');
+  try {
+    const res = await apiGet({ action: 'next', key: S.key, by: S.by });
+    if (res.error) {
+      if (/access key/i.test(res.error)) return signOut(res.error);
+      return showStatus('Could not load a plot', res.error);
+    }
+    renderProgress(res.progress);
+    if (res.finished) return showStatus('All plots are reviewed', 'There are no plots left to check right now. New rows added to the sheet will appear here.');
+    S.item = res;
+    renderItem(res);
+  } catch (e) {
+    showStatus('Could not reach the sheet', 'Check your internet connection, then try again.');
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function submit() {
+  if (S.busy || !S.item) return;
+  const all = CONFIG.QUESTIONS.concat([CONFIG.FINAL_QUESTION]);
+  const answers = {}, missing = [];
+  all.forEach(q => {
+    if (!applies(q)) { answers[q.col] = CONFIG.NA_VALUE; return; }
+    let v = valueOf(q);
+    if (!v && !q.optional) missing.push(q === CONFIG.FINAL_QUESTION ? 'Pani-pipe reading' : q.label);
+    if (q.type === 'rating' && v) v = Number(v);
+    answers[q.col] = v;
+  });
+  if (missing.length) return setMsg('Answer every question to see the next images. Still missing: ' + missing.join('; '), true);
+
+  setBusy(true);
+  setMsg('Saving…');
+  try {
+    const res = await apiPost({ key: S.key, by: S.by, row: S.item.row, rowKey: S.item.rowKey, answers });
+    if (res.error && !res.skip) { setBusy(false); return setMsg(res.error + ' Your answers are still here; try again.', true); }
+    await loadNext();
+    if (res.error) setMsg(res.error, true);
+  } catch (e) {
+    setBusy(false);
+    setMsg('Could not save. Check your connection; your answers are still here.', true);
+  }
+}
+
+function signOut(reason = '') {
+  S.key = ''; store.set('bc_key', '');
+  $('app').hidden = true; $('login').hidden = false;
+  $('name').value = CONFIG.BACKCHECKERS.includes(S.by) ? S.by : '';
+  $('loginMsg').textContent = reason;
+}
+
+function start() {
+  $('login').hidden = true; $('app').hidden = false;
+  $('whoName').textContent = 'Signed in as ' + S.by + '.';
+  loadNext();
+}
+
+/* ---------- Events ---------- */
+$('name').innerHTML = '<option value="">Select your name</option>' +
+  CONFIG.BACKCHECKERS.map(n => `<option>${n}</option>`).join('');
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const by = $('name').value, key = $('key').value.trim();
+  if (!by) return ($('loginMsg').textContent = 'Choose your name from the list.');
+  if (!key) return ($('loginMsg').textContent = 'Enter the access key.');
+  S.by = by; S.key = key;
+  store.set('bc_by', by); store.set('bc_key', key);
+  start();
+});
+$('qForm').addEventListener('input', updateParts);
+$('qForm').addEventListener('change', updateParts);
+$('qForm').addEventListener('submit', e => { e.preventDefault(); submit(); });
+$('retry').addEventListener('click', loadNext);
+$('switch').addEventListener('click', () => signOut());
+$('photos').addEventListener('click', e => {
+  const b = e.target.closest('button[data-i]');
+  if (!b) return;
+  const d = $('zoom'); d.querySelector('img').src = S.item.images[b.dataset.i].src; d.showModal();
+});
+$('zoom').addEventListener('click', () => $('zoom').close());
+
+if (S.by && S.key && CONFIG.BACKCHECKERS.includes(S.by)) start(); else signOut();
+</script>
+</body>
+</html>
