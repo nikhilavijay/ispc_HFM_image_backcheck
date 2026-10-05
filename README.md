@@ -5,131 +5,117 @@ Backcheck of plot x date images from ISPC Kharif 2026 season
 
 The site has two parts:
 
-- **Apps Script** (`Code.gs`) sits inside the Google Sheet. It hands out plots, sends the two photos and writes answers back to the sheet.
+- **Apps Script** (`Code.gs`) sits inside the Google Sheet. It hands out observations one at a time, sends the photos and the pani-pipe reading, and writes answers back to the sheet.
 - **The web page** (`index.html`) is hosted on Vercel from a GitHub repository. This is the link backcheckers open.
 
-Set up Apps Script first. It gives you the web app URL that the page needs.
+**What backcheckers see:** they choose their name from a dropdown and enter the access key. For each observation they see only the plot photo and pipe photo, with no KEY, farmer or village details. They answer the six questions. The pani-pipe reading (`d4_wl_above_` minus `d5_wl_below_`) then appears, followed by the last question. After that they click **Save and show next images**. An observation marked `done` never appears again.
+
+Set up Apps Script first, because the page needs its URL.
 
 ---
 
-## Part 1: Apps Script (the sheet side)
+## Part 1: Apps Script
 
-### 1.1 Add the script to the sheet
+### 1.1 Check the sheet
 
-1. Open the monitoring Google Sheet.
-2. Go to **Extensions → Apps Script**. A new tab opens with a file called `Code.gs`.
-3. Delete everything in that file and paste in the full contents of `Code.gs` from this folder.
-4. Rename the project at the top left (for example, "Plot backcheck").
+Row 1 must contain these headers. Capitals and extra spaces don't matter, but the wording must match.
 
-### 1.2 Edit the config block
+- `KEY` and `plot_num`. One KEY covers several plots, so the two together identify a row. (The sheet has `KEY` twice; the first one is used.)
+- `Hyperlinked Image - 2` (plot photo) and `Hyperlinked Image - 1` (pipe photo)
+- `d4_wl_above_` and `d5_wl_below_`
+- `bc_Checked by:`, where the backchecker's name is written
+- The seven answer columns:
+  - `bc_Image Quality of Plot Image (Max Score: 5)`
+  - `bc_Image Quality of Pipe Image (Max Score: 5)`
+  - `bc_Is the field Flooded across the plot?`
+  - `bc_Is Drying /Flooding correctly recorded as per photo?`
+  - `bc_Is water level in pani-pipe visible?`
+  - `bc_Is the panipipe reading approximately correct ( x cm below soil level)?`
+  - `bc_Comments`
 
-At the top of `Code.gs`, change these values to match your sheet:
+The script adds three tracking columns at the end of row 1 the first time it runs: `bc_status`, `bc_claimed_at` and `bc_submitted_at`. Don't delete them.
 
-| Setting | What to put |
-|---|---|
-| `SHEET_NAME` | The tab name holding the data, exactly as it appears (e.g. `Sheet1`) |
-| `SECRET` | An access key you'll share with backcheckers. Choose something not easy to guess. |
-| `KEY_COL` | Header of the unique identifier column (`KEY`) |
-| `IMAGE_COLS` | Headers of the two image columns, in the order they should appear. If an observation has only one photo, leave the other cell blank. |
+If an observation has only one photo, leave the other image cell blank. Questions about the missing photo are skipped and recorded as `NA`.
 
-Header names must match row 1 exactly, including capitalisation and spaces. You don't need to create the `bc_` answer columns. The script adds them at the end of the header row the first time it runs.
+### 1.2 Add the script
 
-### 1.3 Turn on the Drive API
+1. In the sheet, go to **Extensions → Apps Script**.
+2. Delete everything in `Code.gs` and paste in the full contents of `Code.gs` from this folder.
+3. In the `CONFIG` block at the top, change `SECRET` to an access key of your choice. If the data isn't on the first tab, set `SHEET_NAME` to the tab's name.
+4. In the left sidebar, click **+** next to **Services**, choose **Drive API** (v3), and click **Add**.
+5. Save the file (Ctrl/Cmd + S).
 
-1. In the left sidebar, click **+** next to **Services**.
-2. Choose **Drive API**, keep version **v3**, and click **Add**.
+### 1.3 Grant permissions and check the columns
 
-### 1.4 Grant permissions
+1. In the function dropdown in the toolbar, select `authorize`, then click **Run**.
+2. Click **Review permissions** and choose your account. If you see "Google hasn't verified this app", click **Advanced → Go to (project name) (unsafe)**. This is your own script, so it's safe. Then click **Allow**.
+3. Open the **Execution log**. Every line should say `found`. If one says `MISSING`, fix that header in the sheet, or the matching name in `CONFIG`, and run again.
 
-1. In the toolbar's function dropdown, select `authorize`, then click **Run**.
-2. Click **Review permissions** and choose your J-PAL Google account.
-3. If you see "Google hasn't verified this app", click **Advanced → Go to Plot backcheck (unsafe)**. This is your own script, so it's safe.
-4. Click **Allow**.
-5. Open **Execution log**. You should see a list of your column headers, and the `bc_status`, `bc_by`, `bc_claimed_at` and `bc_submitted_at` columns should now be in the sheet.
+### 1.4 Deploy as a web app
 
-### 1.5 Deploy as a web app
+1. Click **Deploy → New deployment**. Click the gear icon and choose **Web app**.
+2. Set **Execute as: Me** and **Who has access: Anyone**. It must be "Anyone"; the access key is what keeps others out.
+3. Click **Deploy** and copy the **Web app URL**. It ends in `/exec`.
 
-1. Click **Deploy → New deployment**.
-2. Click the gear icon next to "Select type" and choose **Web app**.
-3. Set **Execute as: Me** and **Who has access: Anyone**.
-   (Use "Anyone", not "Anyone with Google account", or the page can't reach it. The access key is what keeps strangers out.)
-4. Click **Deploy** and copy the **Web app URL**. It ends in `/exec`.
-
-**Quick check:** paste this into a browser, using your own URL and key:
+**Quick check:** open this in your browser, using your own URL and key:
 
 ```
 https://script.google.com/macros/s/XXXX/exec?action=next&key=YOUR_SECRET&by=test
 ```
 
-A page full of text starting with `{"row":` means it works. Note that this check reserves one plot for the user "test" for 15 minutes.
+Text starting with `{"row":` means it works. This reserves one observation for "test" for 15 minutes. To release it straight away, clear `bc_status` for that row.
+
+Don't use the **Run** button on `doGet` to test. It fails in the editor because there's no web request.
 
 ---
 
-## Part 2: Put the page on GitHub
+## Part 2: Prepare the page
 
-### 2.1 Add the URL to the page
+Open `index.html` in a text editor. Find the `CONFIG` block near the bottom of the file and make these changes:
 
-Open `index.html` in any text editor (Notepad or TextEdit is fine). Near the bottom, find:
+1. Set `API_URL` to your `/exec` URL, keeping the quote marks.
+2. Replace the placeholder `BACKCHECKERS` with the real names, for example:
+   ```js
+   BACKCHECKERS: ['Asha', 'Ravi', 'Meena'],
+   ```
+3. Optionally edit the question wording (`label`) or hints. Don't change `col`, which must match the sheet header.
 
-```js
-API_URL: 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE',
-```
-
-Replace the placeholder with your `/exec` URL and keep the quote marks. Save the file.
-
-You can also edit the questions here, in the `QUESTIONS` list. Each `col` value becomes a sheet column and must start with `bc_`. A question marked `needsTwoPhotos: true` is hidden for observations with one photo, and `NA` is written to its column instead.
-
-### 2.2 Create the repository
-
-1. Sign in at [github.com](https://github.com), then click **+ → New repository** at the top right.
-2. Name it (for example, `plot-backcheck`) and choose **Private**.
-3. Click **Create repository**.
-4. On the next page, click **uploading an existing file**.
-5. Drag in **`index.html` only**. Don't upload `Code.gs`, because it contains your access key. This README is optional.
-6. Click **Commit changes**.
+Save the file.
 
 ---
 
-## Part 3: Host it on Vercel
+## Part 3: Put it on GitHub
 
-### 3.1 Connect GitHub to Vercel
+1. At [github.com](https://github.com), click **+ → New repository**. Name it (for example `plot-backcheck`), choose **Private**, and click **Create repository**.
+2. Click **uploading an existing file** and drag in **`index.html`**. Leave out `Code.gs`, because it contains your access key.
+3. Click **Commit changes**.
 
-1. Go to [vercel.com](https://vercel.com) and click **Sign up** (or **Log in**) **with GitHub**.
-2. When asked, allow Vercel to access your repositories. You can limit it to just `plot-backcheck`.
+---
 
-### 3.2 Import the project
+## Part 4: Host it on Vercel
 
-1. On the Vercel dashboard, click **Add New… → Project**.
-2. Find `plot-backcheck` in the list and click **Import**.
-3. Set **Framework Preset** to **Other**. Leave the build command, output directory and root directory empty.
-4. Click **Deploy**.
+1. At [vercel.com](https://vercel.com), click **Sign up / Log in with GitHub**. Allow access to the `plot-backcheck` repository.
+2. Click **Add New… → Project**, find `plot-backcheck`, and click **Import**.
+3. Set **Framework Preset** to **Other** and leave every build setting empty. Click **Deploy**.
+4. You'll get a link like `plot-backcheck.vercel.app`. Share it with backcheckers, along with the access key.
 
-After about 30 seconds you'll get a link like `plot-backcheck.vercel.app`. This is the link you send to backcheckers, along with the access key.
+### Test before sharing
 
-To change the address, go to **Project → Settings → Domains**.
-
-### 3.3 Test it
-
-1. Open the link and enter a test name and the access key.
-2. Answer the questions for one plot and click **Save and next plot**.
-3. In the sheet, check that the plot's row now has the answers, `bc_status = done`, your name and a timestamp.
-4. Clear those test values from the `bc_` columns of that row so the plot goes back into the queue.
-
-It's safest to do your first full test on a copy of the sheet (**File → Make a copy**). A copy has its own Apps Script, so repeat Part 1 for it and point a test version of the page at that URL.
+1. Open the link, choose a name, enter the key, and complete one observation.
+2. Check that row in the sheet. It should have all seven answers, the name in `bc_Checked by:`, `bc_status = done` and a timestamp.
+3. Clear those cells so the observation goes back into the queue.
 
 ---
 
 ## Making changes later
 
-**Changing the page** (questions, wording, design): edit `index.html` on GitHub by opening the file, clicking the pencil icon, editing and clicking **Commit changes**. Vercel redeploys automatically within a minute.
+**Page changes** (names, question wording): open `index.html` on GitHub, click the pencil icon, edit, and click **Commit changes**. Vercel updates the site within a minute.
 
-**Changing `Code.gs`**: edit it in the Apps Script editor, then go to **Deploy → Manage deployments**, click the pencil icon, set **Version: New version** and click **Deploy**. Saving the code alone does nothing to the live site. Don't create a *new* deployment, because that gives a new URL and the page would still point to the old one.
+**`Code.gs` changes:** edit in Apps Script, then go to **Deploy → Manage deployments**, click the pencil icon, set **Version: New version**, and click **Deploy**. Saving alone doesn't update the live site. Don't make a *new* deployment, because that changes the URL.
 
-**Changing the access key**: update `SECRET` in `Code.gs` and redeploy as above. Backcheckers will be signed out and asked for the new key.
+**Re-checking an observation:** clear its `bc_status` cell.
 
-**Adding plots**: just add rows to the sheet. They appear on the site automatically.
-
-**Re-checking a plot**: clear its `bc_status` cell. It goes back into the queue.
+**New observations:** add rows to the sheet. They appear on the site automatically.
 
 ---
 
@@ -137,16 +123,16 @@ It's safest to do your first full test on a copy of the sheet (**File → Make a
 
 | What you see | Likely cause and fix |
 |---|---|
-| "Could not reach the sheet" on every load | `API_URL` is wrong, or the deployment's access isn't set to **Anyone**. Recheck step 1.5 and step 2.1. |
-| "Access key is wrong" | The key typed doesn't match `SECRET`. If you changed `SECRET`, check that you redeployed with a new version. |
-| "Photo couldn't be loaded" | The image cell has no Drive link or file ID, the Drive API isn't added (step 1.3), or your account can't open that file. |
-| Answers land in new columns instead of existing ones | A `col` value in `QUESTIONS` doesn't exactly match your existing header. |
-| "Sheet not found" | `SHEET_NAME` doesn't match the tab name. |
-| Code changes don't show up | For `Code.gs`, deploy a new version. For `index.html`, check the latest deployment under the project's **Deployments** tab in Vercel. |
+| "Could not reach the sheet" | `API_URL` is wrong, or the deployment isn't set to **Anyone** (step 1.4). |
+| "Access key is wrong" | The key doesn't match `SECRET`. If you changed `SECRET`, check that you deployed a new version. |
+| "These columns are not in the sheet: …" | A header in the sheet doesn't match `CONFIG` in `Code.gs`. Rename one so they match. |
+| "These answer columns are not in the sheet: …" | A `col` in `index.html` doesn't match the sheet header. |
+| "Plot photo couldn't be loaded" | The image cell has no working Drive link, the Drive API isn't added (step 1.2), or your account can't open that file. |
+| Reading shows "No reading recorded" | Both `d4_wl_above_` and `d5_wl_below_` are blank or non-numeric for that row. |
+| Changes don't show | For `Code.gs`, deploy a new version. For `index.html`, check the latest deployment under **Deployments** in Vercel. |
 
-**Limits worth knowing:**
+**Notes**
 
-- Apps Script runs as your account, so its daily quotas apply. Normal backchecking volume is far below them.
-- Each plot takes a few seconds to load because both photos are fetched from Drive.
-- Vercel's free Hobby plan is meant for personal, non-commercial use. Check with your team whether an organisational account is needed.
+- Each observation takes a few seconds to load, because the photos are fetched from Drive and resized.
+- Vercel's free Hobby plan is for personal, non-commercial use. Check with your team whether an organisational account is needed.
 
