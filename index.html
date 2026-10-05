@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Plot photo backcheck</title>
+<title>ISPC Plot photo backcheck - Kharif 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -82,7 +82,7 @@
 
 <!-- Sign in -->
 <section id="login" class="center" hidden>
-  <h2>Plot photo backcheck</h2>
+  <h2>ISPC Plot photo backcheck - Kharif 2026</h2>
   <p>Choose your name and enter the access key your manager shared.</p>
   <form id="loginForm">
     <label for="name">Your name</label>
@@ -97,8 +97,8 @@
 <!-- Review -->
 <div id="app" hidden>
   <header>
-    <h1>Plot photo backcheck</h1>
-    <div class="who"><span id="progress"></span> <span id="whoName"></span><button id="switch" type="button">Switch user</button></div>
+    <h1>ISPC Plot photo backcheck - Kharif 2026</h1>
+    <div class="who"><span id="progress"></span> <span id="whoName"></span><button id="switch" type="button">Switch user</button><button id="finish" type="button">Finish and exit</button></div>
   </header>
   <div class="bar"><div id="barFill"></div></div>
 
@@ -123,6 +123,13 @@
   </section>
 </div>
 
+<!-- Session finished -->
+<section id="ended" class="center" hidden>
+  <h2>Session finished</h2>
+  <p id="endedText">Your answers are saved. You can close this tab now.</p>
+  <button class="primary" type="button" id="restart">Start again</button>
+</section>
+
 <dialog id="zoom"><img alt=""></dialog>
 
 <script>
@@ -130,7 +137,7 @@
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbx2wLapmNxm9AE2bWrjTQHZqt5zuKbglbkpH5EilvgOTXq8LS3AQOHVnNQG1up8tQq-2w/exec',   // ends in /exec
 
-  BACKCHECKERS: ['Chaitra', 'Supraja', 'Nayan', 'Nikhila', 'Kiran', 'Nick Ryan', 'Steven', 'Naveen', 'Meghana', 'Other'],  // names in the dropdown
+  BACKCHECKERS: ['Chaitra', 'Nikhila', 'Supraja', 'Nayan', 'Nick Ryan', 'Naveen', 'Steven', 'Kiran', 'Others'],  // names in the dropdown
 
   IMAGE_LABELS: ['Plot photo', 'Pipe photo'],   // same order as IMAGE_COLS in Code.gs (Image 2, then Image 1)
 
@@ -143,7 +150,7 @@ const CONFIG = {
     { col: 'bc_Image Quality of Pipe Image (Max Score: 5)', label: 'Image quality of the pipe photo',
       hint: '1 = unusable, 5 = pipe and water line clearly visible', type: 'rating', max: 5, image: 2 },
     { col: 'bc_Is the field Flooded across the plot?', label: 'Is the field flooded across the plot?',
-      type: 'choice', options: ['Yes', 'No'], image: 1 },
+      type: 'choice', options: ['Yes', 'No','Image not clear'], image: 1 },
     { col: 'bc_Is water level in pani-pipe visible?', label: 'Is the water level in the pani-pipe visible?',
       type: 'choice', options: ['Yes', 'No'], image: 2 },
     { col: 'bc_Comments', label: 'Comments', type: 'text' },
@@ -151,13 +158,15 @@ const CONFIG = {
 
   // Asked after the reading is shown; the label is filled in with the reading
   FINAL_QUESTION: { col: 'bc_Is the panipipe reading approximately correct ( x cm below soil level)?',
-    type: 'choice', options: ['Yes', 'No', 'NA'], image: 2 },
+    type: 'choice', options: ['Yes', 'No'], image: 2 },
 
   NA_VALUE: 'NA',
 
   // While the backchecker answers, the next plot loads in the background. A preloaded plot
   // older than this is discarded, so its reservation (15 min in Code.gs) can't run out.
   PRELOAD_MAX_AGE_MIN: 10,
+
+  MIN_SERVER_VERSION: 3,   // must match VERSION in Code.gs
 };
 /* ====================================================== */
 
@@ -227,7 +236,7 @@ function renderItem(it) {
     ? '<figure><div class="noimg">This observation has no photos in the sheet. Answer what you can and explain in Comments.</div></figure>'
     : shown.map(img => `<figure>
         ${img.status === 'ok'
-          ? `<button type="button" data-i="${img.i}" aria-label="Enlarge ${CONFIG.IMAGE_LABELS[img.i]}"><img src="${img.src}" alt="${CONFIG.IMAGE_LABELS[img.i]}"></button>`
+          ? `<button type="button" data-i="${img.i}" aria-label="Enlarge ${CONFIG.IMAGE_LABELS[img.i]}"><img src="${img.src}" alt="${CONFIG.IMAGE_LABELS[img.i]}" onerror="this.parentNode.outerHTML='<div class=&quot;noimg&quot;>${CONFIG.IMAGE_LABELS[img.i]} couldn&#39;t be loaded. Answer what you can and explain in Comments.</div>'"></button>`
           : `<div class="noimg">${CONFIG.IMAGE_LABELS[img.i]} couldn't be loaded. Answer what you can and explain in Comments.</div>`}
         <figcaption>${CONFIG.IMAGE_LABELS[img.i]}</figcaption></figure>`).join('');
 
@@ -276,11 +285,20 @@ function showResult(res) {
     if (/access key/i.test(res.error)) return signOut(res.error);
     return showStatus('Could not load a plot', res.error);
   }
+  if (!(res.v >= CONFIG.MIN_SERVER_VERSION)) {
+    return showStatus('The Apps Script needs updating',
+      'The live Apps Script is an older version than this page. In Apps Script, go to Deploy > Manage deployments, edit the deployment, choose "New version" and click Deploy. Check that API_URL in index.html is that deployment\'s URL.');
+  }
   renderProgress(res.progress);
   if (res.finished) return showStatus('All plots are reviewed', 'There are no plots left to check right now. New rows added to the sheet will appear here.');
   S.item = res;
   renderItem(res);
-  S.preload = { t: Date.now(), p: apiGet({ action: 'next', key: S.key, by: S.by, skip: res.rowKey }).catch(() => null) };
+  S.preload = { t: Date.now(), p: apiGet({ action: 'next', key: S.key, by: S.by, skip: res.rowKey })
+    .then(nx => {   // also warm the browser cache for photos that are plain links
+      (nx && nx.images || []).forEach(im => { if (im.src && /^https?:/.test(im.src)) new Image().src = im.src; });
+      return nx;
+    })
+    .catch(() => null) };
 }
 
 // After saving: use the preloaded plot if it's ready and recent, otherwise load normally
@@ -290,7 +308,7 @@ async function showNext() {
   if (pl && Date.now() - pl.t < CONFIG.PRELOAD_MAX_AGE_MIN * 60000) {
     setMsg('Loading the next plot…');
     const res = await pl.p;
-    if (res && !res.error) {
+    if (res && !res.error && res.rowKey !== (S.item && S.item.rowKey)) {   // never show the same plot twice
       if (res.progress) res.progress.done++;   // counted before this save
       setBusy(false);
       return showResult(res);
@@ -342,6 +360,28 @@ async function submit() {
   }
 }
 
+// Hand back any plots this person has reserved (current + preloaded), so others can take them now
+async function releaseClaims() {
+  if (S.preload) { try { await S.preload.p; } catch {} }   // let a pending preload finish first
+  S.preload = null; S.item = null;
+  try { await apiPost({ key: S.key, by: S.by, action: 'release' }); } catch {}
+}
+
+function hasUnsavedAnswers() {
+  if (!S.item || $('review').hidden) return false;
+  return [...new FormData($('qForm')).values()].some(v => String(v).trim());
+}
+
+async function finish() {
+  if (hasUnsavedAnswers() && !confirm("Your answers for this plot haven't been saved. Finish anyway?")) return;
+  $('finish').disabled = true; $('switch').disabled = true;
+  setMsg('Finishing…');
+  await releaseClaims();
+  $('finish').disabled = false; $('switch').disabled = false;
+  $('app').hidden = true; $('ended').hidden = false;
+  window.close();   // only works if the browser allows it; otherwise the screen above stays
+}
+
 function signOut(reason = '') {
   S.key = ''; store.set('bc_key', '');
   $('app').hidden = true; $('login').hidden = false;
@@ -372,7 +412,13 @@ $('qForm').addEventListener('input', updateParts);
 $('qForm').addEventListener('change', updateParts);
 $('qForm').addEventListener('submit', e => { e.preventDefault(); submit(); });
 $('retry').addEventListener('click', loadNext);
-$('switch').addEventListener('click', () => signOut());
+$('switch').addEventListener('click', async () => {
+  if (hasUnsavedAnswers() && !confirm("Your answers for this plot haven't been saved. Switch user anyway?")) return;
+  await releaseClaims();
+  signOut();
+});
+$('finish').addEventListener('click', finish);
+$('restart').addEventListener('click', () => { $('ended').hidden = true; start(); });
 $('photos').addEventListener('click', e => {
   const b = e.target.closest('button[data-i]');
   if (!b) return;
@@ -384,3 +430,4 @@ if (S.by && S.key && CONFIG.BACKCHECKERS.includes(S.by)) start(); else signOut()
 </script>
 </body>
 </html>
+
