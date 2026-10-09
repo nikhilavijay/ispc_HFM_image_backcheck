@@ -27,9 +27,7 @@
   main { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: 1.25rem; padding: 1.25rem; max-width: 1500px; margin: 0 auto; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
 
-  .photos { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; align-self: start; }
-  .photos.single { grid-template-columns: minmax(0, 560px); }
-  @media (max-width: 600px) { .photos { grid-template-columns: 1fr; } }
+  .photos { display: grid; grid-template-columns: minmax(0, 640px); gap: .75rem; align-self: start; }
   figure { margin: 0; position: relative; background: var(--soil); border-radius: 6px; overflow: hidden; aspect-ratio: 3 / 4; }
   figure button { all: unset; display: block; width: 100%; height: 100%; cursor: zoom-in; }
   figure button:focus-visible { outline: 3px solid var(--water); outline-offset: -3px; }
@@ -52,12 +50,6 @@
   textarea { min-height: 4.5rem; resize: vertical; }
   textarea:focus, input:focus, select:focus { outline: 3px solid var(--water); outline-offset: 0; border-color: var(--water); }
 
-  /* Reading: the one emphasised element on the page */
-  .reading { border-left: 4px solid var(--water); background: #E6EFF3; padding: .85rem 1rem; margin: 0 0 1.3rem; border-radius: 0 6px 6px 0; }
-  .reading .label { font-size: .85rem; color: var(--muted); }
-  .reading strong { display: block; font-size: 2rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
-  .reading .sub { font-size: .85rem; color: var(--muted); margin: .25rem 0 0; }
-  #part2 { border-top: 1px solid var(--line); padding-top: 1.25rem; }
 
   button.primary { font: inherit; font-weight: 600; border-radius: 6px; padding: .75rem 1.1rem; cursor: pointer; background: var(--paddy); color: #fff; border: 0; width: 100%; }
   button:disabled { opacity: .55; cursor: wait; }
@@ -106,12 +98,7 @@
     <div class="photos" id="photos"></div>
     <form id="qForm" class="panel" novalidate>
       <div id="part1"></div>
-      <p class="waiting" id="waiting">Answer all the questions above to see the pani-pipe reading.</p>
-      <div id="part2" hidden>
-        <div class="reading" id="reading"></div>
-        <div id="finalQ"></div>
-        <button class="primary" type="submit" id="saveBtn">Save and show next images</button>
-      </div>
+      <button class="primary" type="submit" id="saveBtn">Save and show next image</button>
       <p class="msg" id="msg" role="status"></p>
     </form>
   </main>
@@ -139,26 +126,15 @@ const CONFIG = {
 
   BACKCHECKERS: ['Chaitra', 'Nikhila', 'Supraja', 'Nayan', 'Nick Ryan', 'Naveen', 'Steven', 'Kiran', 'Others'],  // names in the dropdown
 
-  IMAGE_LABELS: ['Plot photo', 'Pipe photo'],   // same order as IMAGE_COLS in Code.gs (Image 2, then Image 1)
+  IMAGE_LABELS: ['Plot photo'],   // same order as IMAGE_COLS in Code.gs
 
   // "col" must match the sheet header exactly (extra spaces and capitals are ignored).
   // image: 1 or 2 means the question is skipped, and NA_VALUE recorded, when that photo is blank.
   // optional: true lets the backchecker leave it empty.
   QUESTIONS: [
-    { col: 'bc_Image Quality of Plot Image (Max Score: 5)', label: 'Image quality of the plot photo',
-      hint: '1 = unusable, 5 = clear and shows the whole plot', type: 'rating', max: 5, image: 1 },
-    { col: 'bc_Image Quality of Pipe Image (Max Score: 5)', label: 'Image quality of the pipe photo',
-      hint: '1 = unusable, 5 = pipe and water line clearly visible', type: 'rating', max: 5, image: 2 },
-    { col: 'bc_Is the field Flooded across the plot?', label: 'Is the field flooded across the plot?',
-      type: 'choice', options: ['Yes', 'No','Image not clear'], image: 1 },
-    { col: 'bc_Is water level in pani-pipe visible?', label: 'Is the water level in the pani-pipe visible?',
-      type: 'choice', options: ['Yes', 'No'], image: 2 },
-    { col: 'bc_Comments', label: 'Comments', type: 'text' },
+    { col: 'bc_In this image is there standing water across the plot?', label: 'Is the field flooded across the plot?',
+      type: 'choice', options: ['Yes', 'No', 'Partially Flooded (puddles)', 'Plot is looking wet/mushy but no standing water', 'Image not clear'], image: 1 },
   ],
-
-  // Asked after the reading is shown; the label is filled in with the reading
-  FINAL_QUESTION: { col: 'bc_Is the panipipe reading approximately correct ( x cm below soil level)?',
-    type: 'choice', options: ['Yes', 'No'], image: 2 },
 
   NA_VALUE: 'NA',
 
@@ -166,7 +142,7 @@ const CONFIG = {
   // older than this is discarded, so its reservation (15 min in Code.gs) can't run out.
   PRELOAD_MAX_AGE_MIN: 10,
 
-  MIN_SERVER_VERSION: 3,   // must match VERSION in Code.gs
+  MIN_SERVER_VERSION: 4,   // must match VERSION in Code.gs
 };
 /* ====================================================== */
 
@@ -214,16 +190,6 @@ function valueOf(q) {
   return (fd.get(q.col) || '').toString().trim();
 }
 
-function part1Complete() {
-  return CONFIG.QUESTIONS.every(q => !applies(q) || q.optional || valueOf(q));
-}
-
-function readingText(rd) {
-  if (!rd) return { big: 'No reading recorded', phrase: 'no reading recorded' };
-  const v = rd.value, a = Math.abs(v);
-  const phrase = v < 0 ? `${a} cm below soil level` : v > 0 ? `${a} cm above soil level` : 'at soil level';
-  return { big: `${v} cm`, phrase };
-}
 
 /* ---------- Rendering ---------- */
 function renderItem(it) {
@@ -231,37 +197,17 @@ function renderItem(it) {
 
   // Photos: only the ones that exist for this observation
   const shown = it.images.map((img, i) => ({ ...img, i })).filter(img => img.status !== 'missing');
-  $('photos').classList.toggle('single', shown.length < 2);
   $('photos').innerHTML = !shown.length
-    ? '<figure><div class="noimg">This observation has no photos in the sheet. Answer what you can and explain in Comments.</div></figure>'
+    ? '<figure><div class="noimg">This observation has no plot photo in the sheet. Click Save to record NA and move on.</div></figure>'
     : shown.map(img => `<figure>
         ${img.status === 'ok'
-          ? `<button type="button" data-i="${img.i}" aria-label="Enlarge ${CONFIG.IMAGE_LABELS[img.i]}"><img src="${img.src}" alt="${CONFIG.IMAGE_LABELS[img.i]}" onerror="this.parentNode.outerHTML='<div class=&quot;noimg&quot;>${CONFIG.IMAGE_LABELS[img.i]} couldn&#39;t be loaded. Answer what you can and explain in Comments.</div>'"></button>`
-          : `<div class="noimg">${CONFIG.IMAGE_LABELS[img.i]} couldn't be loaded. Answer what you can and explain in Comments.</div>`}
+          ? `<button type="button" data-i="${img.i}" aria-label="Enlarge ${CONFIG.IMAGE_LABELS[img.i]}"><img src="${img.src}" alt="${CONFIG.IMAGE_LABELS[img.i]}" onerror="this.parentNode.outerHTML='<div class=&quot;noimg&quot;>${CONFIG.IMAGE_LABELS[img.i]} couldn&#39;t be loaded. Choose Image not clear.</div>'"></button>`
+          : `<div class="noimg">${CONFIG.IMAGE_LABELS[img.i]} couldn't be loaded. Choose Image not clear.</div>`}
         <figcaption>${CONFIG.IMAGE_LABELS[img.i]}</figcaption></figure>`).join('');
 
-  // Part 1 questions
   $('part1').innerHTML = CONFIG.QUESTIONS.filter(applies).map(q => questionHTML(q, q.label)).join('');
-
-  // Reading and final question
-  const rt = readingText(it.reading);
-  const rd = it.reading;
-  $('reading').innerHTML = `<span class="label">Pani-pipe reading recorded in the survey</span><strong>${rt.big}</strong>` +
-    (rd ? `<p class="sub">Water above soil (${rd.above} cm) minus water below soil (${rd.below} cm). Negative means below soil level.</p>` : '');
-  const fq = CONFIG.FINAL_QUESTION;
-  $('reading').hidden = !applies(fq);
-  $('finalQ').innerHTML = applies(fq) ? questionHTML(fq, `Is the pani-pipe reading approximately correct (${rt.phrase})?`) : '';
-
-  $('part2').hidden = true; $('waiting').hidden = false;
-  updateParts();
   setMsg('');
   window.scrollTo({ top: 0 });
-}
-
-// Reveal the reading and final question once part 1 is fully answered
-function updateParts() {
-  if (!$('part2').hidden) return;
-  if (part1Complete()) { $('part2').hidden = false; $('waiting').hidden = true; }
 }
 
 function renderProgress(p) {
@@ -321,9 +267,8 @@ async function loadNext() {
   S.preload = null;
   setBusy(true);
   $('review').hidden = false; $('status').hidden = true;
-  $('part1').innerHTML = ''; $('part2').hidden = true; $('waiting').hidden = true;
-  $('photos').classList.remove('single');
-  $('photos').innerHTML = '<figure><div class="noimg">Loading photo…</div></figure><figure><div class="noimg">Loading photo…</div></figure>';
+  $('part1').innerHTML = '';
+  $('photos').innerHTML = '<figure><div class="noimg">Loading photo…</div></figure>';
   setMsg('Loading the next plot…');
   try {
     showResult(await apiGet({ action: 'next', key: S.key, by: S.by }));
@@ -336,16 +281,15 @@ async function loadNext() {
 
 async function submit() {
   if (S.busy || !S.item) return;
-  const all = CONFIG.QUESTIONS.concat([CONFIG.FINAL_QUESTION]);
   const answers = {}, missing = [];
-  all.forEach(q => {
+  CONFIG.QUESTIONS.forEach(q => {
     if (!applies(q)) { answers[q.col] = CONFIG.NA_VALUE; return; }
     let v = valueOf(q);
-    if (!v && !q.optional) missing.push(q === CONFIG.FINAL_QUESTION ? 'Pani-pipe reading' : q.label);
+    if (!v && !q.optional) missing.push(q.label);
     if (q.type === 'rating' && v) v = Number(v);
     answers[q.col] = v;
   });
-  if (missing.length) return setMsg('Answer every question to see the next images. Still missing: ' + missing.join('; '), true);
+  if (missing.length) return setMsg('Answer the question to see the next image.', true);
 
   setBusy(true);
   setMsg('Saving…');
@@ -408,8 +352,6 @@ $('loginForm').addEventListener('submit', e => {
   store.set('bc_by', by); store.set('bc_key', key);
   start();
 });
-$('qForm').addEventListener('input', updateParts);
-$('qForm').addEventListener('change', updateParts);
 $('qForm').addEventListener('submit', e => { e.preventDefault(); submit(); });
 $('retry').addEventListener('click', loadNext);
 $('switch').addEventListener('click', async () => {
@@ -430,4 +372,3 @@ if (S.by && S.key && CONFIG.BACKCHECKERS.includes(S.by)) start(); else signOut()
 </script>
 </body>
 </html>
-
