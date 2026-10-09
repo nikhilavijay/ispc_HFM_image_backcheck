@@ -370,5 +370,14 @@ $('zoom').addEventListener('click', () => $('zoom').close());
 
 if (S.by && S.key && CONFIG.BACKCHECKERS.includes(S.by)) start(); else signOut();
 </script>
+
+<!-- Vercel Web Analytics -->
+<script>
+  window.va = window.va || function () { 
+    (window.vaq = window.vaq || []).push(arguments); 
+  };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+
 </body>
 </html>
